@@ -1,0 +1,4 @@
+# buildは含めない
+build/
+# distは含めない
+dist/
