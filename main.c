@@ -74,7 +74,7 @@ void SWITCH_ISR(void);                             // RB4(設定モード切り替えボタ
 void START_EA_ISR(void);                           // RB5(スタート・イネーブルボタン)の割り込み処理
 void init_clock(void);                             // タイマーの初期化設定
 void mainApp(void);                                // メイン関数のwhileループでの処理
-void write_74HC595(unsigned char, unsigned char);  // 74HC595(シフトレジスタ)に情報を書き込む関数
+void write_74HC595(void);                          // 74HC595(シフトレジスタ)に情報を書き込む関数
 void wait_chattering(void);                        // チャタリングを待つ関数
 void updown_min_sec(unsigned char, unsigned char); // 秒，分を設定する関数
 void updown_hour(unsigned char);                   // 時を設定する関数
@@ -93,9 +93,7 @@ unsigned char hour = 0;              // 時
 unsigned char day = 1;               // 日
 unsigned char month = 1;             // 月
 unsigned char year = 0;              // 年
-unsigned char write_lower = 0;       // 下2桁書き込みフラグ
-unsigned char write_middle = 0;      // 中2桁書き込みフラグ
-unsigned char write_upper = 0;       // 上2桁書き込みフラグ
+unsigned char is_write = 0;          // シフトレジスタ書き込み信号
 unsigned char mode = 0;              // 0 : 時計, 1 : カレンダー
 unsigned char data = 0;              // シフトレジスタに書き込むデータ
 unsigned char start = 0;             // カウント開始フラグ
@@ -178,23 +176,10 @@ void mainApp(void)
 {
     if (ENABLE)
     {
-        if (write_lower)
+        if (is_write)
         {
-            write_lower = 0;            // 書き込みフラグを降ろす
-            data = mode ? day : second; // mode 0 : 時計, 1 : カレンダー
-            write_74HC595(data, 0);
-        }
-        if (write_middle)
-        {
-            write_middle = 0; // 書き込みフラグを降ろす
-            data = mode ? month : minute;
-            write_74HC595(data, 1);
-        }
-        if (write_upper)
-        {
-            write_upper = 0; // 書き込みフラグを降ろす
-            data = mode ? year : hour;
-            write_74HC595(data, 2);
+            is_write = 0; // 書き込みフラグを降ろす
+            write_74HC595();
         }
         if (!ENABLE)
         {                     // 途中で割り込みが発生したときの処理
@@ -207,38 +192,63 @@ void mainApp(void)
 }
 
 /* 74HC595(シフトレジスタ)に情報を書き込む関数 */
-// selectはどのシフトレジスタに書き込むか(0 : 下位, 1 : 中位, 2 : 上位)
-void write_74HC595(unsigned char data, unsigned char select)
+void write_74HC595(void)
 {
-    upper = data / 10;
-    lower = data % 10;
-    // シフト演算は暗黙的にintになっていしまうので unsigned char にキャストする
-    bcd_code = (unsigned char)(upper << 4) + lower;
-    for (unsigned char i = 0; i < 8; i++)
+    unsigned char data;
+
+    for (unsigned char i = 0; i < 3; i++)
     {
-        SER = (__bit)((bcd_code & compared) >> i); // 各ビットが1か0かを記録 (__bit型にキャスト)
-        switch (select)
+        switch (i)
         {
         case 0:
-            LOWSRCLK = 1; // 立ち上がりでデータを送る
-            LOWSRCLK = 0;
+            data = mode ? day : second;
             break;
+
         case 1:
-            MIDSRCLK = 1;
-            MIDSRCLK = 0;
+            data = mode ? month : minute;
             break;
+
         case 2:
-            UPPSRCLK = 1;
-            UPPSRCLK = 0;
+            data = mode ? year : hour;
             break;
+
         default:
             break;
         }
-        compared = (unsigned char)(compared << 1);
+
+        upper = data / 10;
+        lower = data % 10;
+        // シフト演算は暗黙的にintになっていしまうので unsigned char にキャストする
+        bcd_code = (unsigned char)(upper << 4) + lower;
+
+        for (unsigned char j = 0; j < 8; j++)
+        {
+            SER = (__bit)((bcd_code & compared) >> j); // 各ビットが1か0かを記録 (__bit型にキャスト)
+            switch (select)
+            {
+            case 0:
+                LOWSRCLK = 1; // 立ち上がりでデータを送る
+                LOWSRCLK = 0;
+                break;
+
+            case 1:
+                MIDSRCLK = 1;
+                MIDSRCLK = 0;
+                break;
+
+            case 2:
+                UPPSRCLK = 1;
+                UPPSRCLK = 0;
+                break;
+            default:
+                break;
+            }
+            compared = (unsigned char)(compared << 1);
+        }
+        compared = 0b00000001;
+        RCLK = 1; // 全データを送り終わったらシフトレジスタの値を出力に反映
+        RCLK = 0;
     }
-    compared = 0b00000001;
-    RCLK = 1; // 全データを送り終わったらシフトレジスタの値を出力に反映
-    RCLK = 0;
 }
 
 /* ニキシー管を消灯させるための関数 0: 下位2桁 1: 中位2桁 2: 上位2桁 255: 全桁 */
@@ -285,7 +295,7 @@ void updown_min_sec(unsigned char is_up, unsigned char unit)
     {
         unit = is_up ? 0 : 59;
     }
-    write_74HC595(unit, 0);
+    write_74HC595();
 }
 
 /* 時を設定する関数 */
@@ -296,7 +306,7 @@ void updown_hour(unsigned char is_up)
     {
         hour = is_up ? 0 : 23;
     }
-    write_74HC595(hour, 2);
+    write_74HC595();
 }
 
 /* 日を設定する関数 */
@@ -313,7 +323,7 @@ void updown_day(unsigned char is_up)
     {
         day = 31;
     }
-    write_74HC595(day, 0);
+    write_74HC595();
 }
 
 /* 月を設定する関数 */
@@ -329,7 +339,7 @@ void updown_month(unsigned char is_up)
     {
         month = 12;
     }
-    write_74HC595(month, 1);
+    write_74HC595();
 }
 
 /* 年を設定する関数 */
@@ -340,7 +350,7 @@ void updown_year(unsigned char is_up)
     {
         year = is_up ? 0 : 99;
     }
-    write_74HC595(year, 2);
+    write_74HC595();
 }
 
 /* TMR0の割り込み処理(200msごとに設定桁を点滅) */
@@ -356,9 +366,7 @@ void MYTMR0_ISR(void)
         else
         {
             is_light = 1;
-            write_74HC595(mode ? day : second, 0);
-            write_74HC595(mode ? month : minute, 1);
-            write_74HC595(mode ? year : hour, 2);
+            write_74HC595();
         }
     }
 }
@@ -370,18 +378,16 @@ void MYTMR2_ISR(void)
     {
         // 割り込みは1s周期
         second++;
-        write_lower = 1; // 下2桁書き込み信号
+        is_write = 1; // シフトレジスタ書き込みフラグを立てる
         if (second >= 60)
         {
             second = 0;
             minute++;
-            write_middle = 1; // 中2桁書き込み信号
         }
         if (minute >= 60)
         {
             minute = 0;
             hour++;
-            write_upper = 1; // 上2桁書き込み信号
         }
         if (hour >= 24)
         {
@@ -443,10 +449,6 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_min_sec(COUNTUP, second);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -459,10 +461,6 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_min_sec(COUNTUP, minute);
-                        }
-                        else
-                        {
-                            __delay_ms(1);
                         }
                     }
                     count = 0;
@@ -477,10 +475,6 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_hour(COUNTUP);
-                        }
-                        else
-                        {
-                            __delay_ms(1);
                         }
                     }
                     count = 0;
@@ -504,10 +498,6 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_day(COUNTUP);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -521,10 +511,6 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_month(COUNTUP);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -537,10 +523,6 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_year(COUNTUP);
-                        }
-                        else
-                        {
-                            __delay_ms(1);
                         }
                     }
                     count = 0;
@@ -576,10 +558,6 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_min_sec(COUNTDOWN, second);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -593,10 +571,6 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_min_sec(COUNTDOWN, minute);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -609,10 +583,6 @@ void MINUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_hour(COUNTDOWN);
-                        }
-                        else
-                        {
-                            __delay_ms(1);
                         }
                     }
                     count = 0;
@@ -636,10 +606,6 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_day(COUNTDOWN);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -653,10 +619,6 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_month(COUNTDOWN);
                         }
-                        else
-                        {
-                            __delay_ms(1);
-                        }
                     }
                     count = 0;
                     break;
@@ -669,10 +631,6 @@ void MINUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_year(COUNTDOWN);
-                        }
-                        else
-                        {
-                            __delay_ms(1);
                         }
                     }
                     count = 0;
@@ -728,9 +686,7 @@ void SWITCH_ISR(void)
         mode = !mode;
         if (ENABLE)
         {
-            write_74HC595(mode ? day : second, 0);
-            write_74HC595(mode ? month : minute, 1);
-            write_74HC595(mode ? year : hour, 2);
+            write_74HC595();
         }
     }
 }
@@ -754,9 +710,7 @@ void START_EA_ISR(void)
             }
             else
             {
-                write_74HC595(mode ? day : second, 0);
-                write_74HC595(mode ? month : minute, 1);
-                write_74HC595(mode ? year : hour, 2);
+                write_74HC595();
             }
         }
     }
