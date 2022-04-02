@@ -365,7 +365,7 @@ void updown_year(unsigned char is_up)
     write_74HC595();
 }
 
-/* TMR0‚ÌŠ„‚è‚İˆ—(200ms‚²‚Æ‚Éİ’èŒ…‚ğ“_–Å) */
+/* TMR0‚ÌŠ„‚è‚İˆ—(İ’èŒ…‚ğ“_–Å) */
 void MYTMR0_ISR(void)
 {
     if (!start)
