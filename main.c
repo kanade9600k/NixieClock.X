@@ -64,24 +64,25 @@
  */
 
 /* 関数プロトタイプ宣言 */
-void MYTMR0_ISR(void);                             // タイマー0の割り込み処理
-void MYTMR2_ISR(void);                             // タイマー2の割り込み処理(ISR : Interrupt Service Routin)
-void PLUS_ISR(void);                               // RB0(+ボタン)の割り込み処理
-void MINUS_ISR(void);                              // RB1(-ボタン)の割り込み処理
-void UPDIGIT_ISR(void);                            // RB2(設定桁上げボタン)の割り込み処理
-void DOWNDIGIT_ISR(void);                          // RB3(設定桁下げボタン)の割り込み処理
-void SWITCH_ISR(void);                             // RB4(設定モード切り替えボタン)の割り込み処理
-void START_EA_ISR(void);                           // RB5(スタート・イネーブルボタン)の割り込み処理
-void init_clock(void);                             // タイマーの初期化設定
-void mainApp(void);                                // メイン関数のwhileループでの処理
-void write_74HC595(void);                          // 74HC595(シフトレジスタ)に情報を書き込む関数
-void wait_chattering(void);                        // チャタリングを待つ関数
-void updown_min_sec(unsigned char, unsigned char); // 秒，分を設定する関数
-void updown_hour(unsigned char);                   // 時を設定する関数
-void updown_day(unsigned char);                    // 日を設定する関数
-void updown_month(unsigned char);                  // 月を設定する関数
-void updown_year(unsigned char);                   // 年を設定する関数
-void sleep_nixie(unsigned char);                   // ニキシー管を全消灯するための関数
+void MYTMR0_ISR(void);             // タイマー0の割り込み処理
+void MYTMR2_ISR(void);             // タイマー2の割り込み処理(ISR : Interrupt Service Routin)
+void PLUS_ISR(void);               // RB0(+ボタン)の割り込み処理
+void MINUS_ISR(void);              // RB1(-ボタン)の割り込み処理
+void UPDIGIT_ISR(void);            // RB2(設定桁上げボタン)の割り込み処理
+void DOWNDIGIT_ISR(void);          // RB3(設定桁下げボタン)の割り込み処理
+void SWITCH_ISR(void);             // RB4(設定モード切り替えボタン)の割り込み処理
+void START_EA_ISR(void);           // RB5(スタート・イネーブルボタン)の割り込み処理
+void init_clock(void);             // タイマーの初期化設定
+void mainApp(void);                // メイン関数のwhileループでの処理
+void write_74HC595(void);          // 74HC595(シフトレジスタ)に情報を書き込む関数
+void wait_chattering(void);        // チャタリングを待つ関数
+void updown_second(unsigned char); // 秒を設定する関数
+void updown_minute(unsigned char); // 分を設定する関数
+void updown_hour(unsigned char);   // 時を設定する関数
+void updown_day(unsigned char);    // 日を設定する関数
+void updown_month(unsigned char);  // 月を設定する関数
+void updown_year(unsigned char);   // 年を設定する関数
+void sleep_nixie(unsigned char);   // ニキシー管を全消灯するための関数
 
 /* グローバル変数宣言 */
 // 配列だったものを変数に変えた
@@ -287,13 +288,24 @@ void wait_chattering(void)
     __delay_ms(15);
 }
 
-/* 秒，分を設定する関数 */
-void updown_min_sec(unsigned char is_up, unsigned char unit)
+/* 秒を設定する関数 */
+void updown_second(unsigned char is_up)
 {
-    is_up ? unit++ : unit--;
-    if (unit >= 60)
+    is_up ? second++ : second--;
+    if (second >= 60)
     {
-        unit = is_up ? 0 : 59;
+        second = is_up ? 0 : 59;
+    }
+    write_74HC595();
+}
+
+/* 分を設定する関数 */
+void updown_minute(unsigned char is_up)
+{
+    is_up ? minute++ : minute--;
+    if (minute >= 60)
+    {
+        minute = is_up ? 0 : 59;
     }
     write_74HC595();
 }
@@ -439,7 +451,7 @@ void PLUS_ISR(void)
                 switch (selected_digit)
                 {
                 case 0:
-                    updown_min_sec(COUNTUP, second);
+                    updown_second(COUNTUP);
                     // 長押しで連続上げ
                     while (PLUS)
                     {
@@ -447,20 +459,20 @@ void PLUS_ISR(void)
                         {
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
-                            updown_min_sec(COUNTUP, second);
+                            updown_second(COUNTUP);
                         }
                     }
                     count = 0;
                     break;
                 case 1:
-                    updown_min_sec(COUNTUP, minute);
+                    updown_minute(COUNTUP);
                     while (PLUS)
                     {
                         if (LONGPUSH <= ++count)
                         {
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
-                            updown_min_sec(COUNTUP, minute);
+                            updown_minute(COUNTUP);
                         }
                     }
                     count = 0;
@@ -548,7 +560,7 @@ void MINUS_ISR(void)
                 switch (selected_digit)
                 {
                 case 0:
-                    updown_min_sec(COUNTDOWN, second);
+                    updown_second(COUNTDOWN);
                     // 長押しで連続下げ
                     while (MINUS)
                     {
@@ -556,20 +568,20 @@ void MINUS_ISR(void)
                         {
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
-                            updown_min_sec(COUNTDOWN, second);
+                            updown_second(COUNTDOWN);
                         }
                     }
                     count = 0;
                     break;
                 case 1:
-                    updown_min_sec(COUNTDOWN, minute);
+                    updown_minute(COUNTDOWN);
                     while (MINUS)
                     {
                         if (LONGPUSH <= ++count)
                         {
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
-                            updown_min_sec(COUNTDOWN, minute);
+                            updown_minute(COUNTDOWN);
                         }
                     }
                     count = 0;
