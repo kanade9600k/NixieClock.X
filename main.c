@@ -224,7 +224,7 @@ void write_74HC595(void)
         for (unsigned char j = 0; j < 8; j++)
         {
             SER = (__bit)((bcd_code & compared) >> j); // 各ビットが1か0かを記録 (__bit型にキャスト)
-            switch (select)
+            switch (i)
             {
             case 0:
                 LOWSRCLK = 1; // 立ち上がりでデータを送る
