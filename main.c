@@ -42,31 +42,29 @@
 */
 
 #include "mcc_generated_files/mcc.h"
-#define SER RA0         // RA0をSERと名づける
-#define RCLK RA1        // RA1をRCLKと名づける
-#define UPPSRCLK RA2    // RA2をUPPSRCLKと名づける
-#define MIDSRCLK RA3    // RA3をMIDSRCLKと名づける
-#define LOWSRCLK RA4    // RA4をLOWSRCLKと名づける
-#define ENABLE RA6      // RA6をENABLEと名づける
-#define UPDIGIT RB0     // RB0をUPDIGITと名づける
-#define DOWNDIGIT RB1   // RB1をDOWNDIGITと名づける
-#define PLUS RB2        // RB2をPLUSと名づける
-#define MINUS RB3       // RB3をMINUSと名づける
-#define SWITCH RB4      // RB4をSWITCHと名づける
-#define START_EA RB5    // RB5をSTART_EAと名づける
-#define LONGPUSH 500    // 長押し判定時間(ms)
-#define SKIPSPAN 100    // ボタン長押しのスキップ時に何msに1回カウントするかの時間
-#define COUNTDOWN 0     // カウントダウンを表す
-#define COUNTUP 1       // カウントアップを表す
-#define HOUR_CYCLE 24   // 1時間のサイクル
-#define MINUTE_CYCLE 60 // 1分間のサイクル
-#define SECOND_CYCLE 60 // 1秒間のサイクル
+#define SER RA0       // RA0をSERと名づける
+#define RCLK RA1      // RA1をRCLKと名づける
+#define UPPSRCLK RA2  // RA2をUPPSRCLKと名づける
+#define MIDSRCLK RA3  // RA3をMIDSRCLKと名づける
+#define LOWSRCLK RA4  // RA4をLOWSRCLKと名づける
+#define ENABLE RA6    // RA6をENABLEと名づける
+#define UPDIGIT RB0   // RB0をUPDIGITと名づける
+#define DOWNDIGIT RB1 // RB1をDOWNDIGITと名づける
+#define PLUS RB2      // RB2をPLUSと名づける
+#define MINUS RB3     // RB3をMINUSと名づける
+#define SWITCH RB4    // RB4をSWITCHと名づける
+#define START_EA RB5  // RB5をSTART_EAと名づける
+#define LONGPUSH 500  // 長押し判定時間(ms)
+#define SKIPSPAN 100  // ボタン長押しのスキップ時に何msに1回カウントするかの時間
+#define COUNTDOWN 0   // カウントダウンを表す
+#define COUNTUP 1     // カウントアップを表す
 
 /*
                          Main application
  */
 
 /* 関数プロトタイプ宣言 */
+void MYTMR0_ISR(void);                             // タイマー0の割り込み処理
 void MYTMR2_ISR(void);                             // タイマー2の割り込み処理(ISR : Interrupt Service Routin)
 void PLUS_ISR(void);                               // RB0(+ボタン)の割り込み処理
 void MINUS_ISR(void);                              // RB1(-ボタン)の割り込み処理
@@ -83,7 +81,7 @@ void updown_hour(unsigned char);                   // 時を設定する関数
 void updown_day(unsigned char);                    // 日を設定する関数
 void updown_month(unsigned char);                  // 月を設定する関数
 void updown_year(unsigned char);                   // 年を設定する関数
-void sleep_nixie(void);                            // ニキシー管を全消灯するための関数
+void sleep_nixie(unsigned char);                   // ニキシー管を全消灯するための関数
 
 /* グローバル変数宣言 */
 // 配列だったものを変数に変えた
@@ -107,6 +105,7 @@ unsigned char lower = 0;             // シフトレジスタ入力の下位桁
 unsigned char upper = 0;             // シフトレジスタ入力の上位桁
 unsigned char bcd_code = 0;          // シフトレジスタ入力用BCDコード
 unsigned char compared = 0b00000001; // 1ビットごとに比較を行うための値
+unsigned char is_light = 1;          // 0 : 消灯，1 : 点灯
 
 void main(void)
 {
@@ -122,6 +121,8 @@ void main(void)
     // Enable the Peripheral Interrupts
     INTERRUPT_PeripheralInterruptEnable();
 
+    // タイマー0の割り込み時に呼び出される関数
+    TMR0_SetInterruptHandler(MYTMR0_ISR);
     // タイマー2の割り込み時に呼び出される関数
     TMR2_SetInterruptHandler(MYTMR2_ISR);
     // RB0の割り込み時に呼び出される関数
@@ -168,7 +169,7 @@ void init_clock(void)
     RB7 = 0;
     while (!start)
     {
-        ; // 初期化はすべて割り込みで行うので何もしない
+        ; // 初期設定はすべて割り込みで行う
     }
 }
 
@@ -196,12 +197,12 @@ void mainApp(void)
             write_74HC595(data, 2);
         }
         if (!ENABLE)
-        { // 途中で割り込みが発生したときの処理
-            sleep_nixie();
+        {                     // 途中で割り込みが発生したときの処理
+            sleep_nixie(255); // 全消灯
         }
     }
     //    else {
-    //        sleep_nixie();
+    //        sleep_nixie(255);
     //    }
 }
 
@@ -240,20 +241,31 @@ void write_74HC595(unsigned char data, unsigned char select)
     RCLK = 0;
 }
 
-/* ニキシー管を全消灯させるための関数 */
-void sleep_nixie(void)
+/* ニキシー管を消灯させるための関数 0: 下位2桁 1: 中位2桁 2: 上位2桁 255: 全桁 */
+void sleep_nixie(unsigned char digit)
 {
     for (unsigned char i = 0; i < 8; i++)
     {
-        SER = 1; // 全桁に1を書き込み PICはビットごとの書き換えができないので毎回書き込む
-        LOWSRCLK = 1;
-        LOWSRCLK = 0;
-        SER = 1;
-        MIDSRCLK = 1;
-        MIDSRCLK = 0;
-        SER = 1;
-        UPPSRCLK = 1;
-        UPPSRCLK = 0;
+        if (digit == 255 || digit == 0)
+        {
+            SER = 1; // 全桁に1を書き込み PICはビットごとの書き換えができないので毎回書き込む
+            LOWSRCLK = 1;
+            LOWSRCLK = 0;
+        }
+
+        if (digit == 255 || digit == 1)
+        {
+            SER = 1;
+            MIDSRCLK = 1;
+            MIDSRCLK = 0;
+        }
+
+        if (digit == 255 || digit == 2)
+        {
+            SER = 1;
+            UPPSRCLK = 1;
+            UPPSRCLK = 0;
+        }
     }
     RCLK = 1;
     RCLK = 0;
@@ -331,6 +343,26 @@ void updown_year(unsigned char is_up)
     write_74HC595(year, 2);
 }
 
+/* TMR0の割り込み処理(200msごとに設定桁を点滅) */
+void MYTMR0_ISR(void)
+{
+    if (!start)
+    {
+        if (is_light)
+        {
+            is_light = 0;
+            sleep_nixie(selected_digit);
+        }
+        else
+        {
+            is_light = 1;
+            write_74HC595(mode ? day : second, 0);
+            write_74HC595(mode ? month : minute, 1);
+            write_74HC595(mode ? year : hour, 2);
+        }
+    }
+}
+
 /* TMR2の割り込み処理(1sごとに時計を更新) */
 void MYTMR2_ISR(void)
 {
@@ -388,7 +420,7 @@ void MYTMR2_ISR(void)
     }
 }
 
-/* RB0の割り込み処理(値設定フェーズで数値の増加を行う) */
+/* +ボタンの割り込み処理(値設定フェーズで数値の増加を行う) */
 void PLUS_ISR(void)
 {
     if (!start)
@@ -521,7 +553,7 @@ void PLUS_ISR(void)
     }
 }
 
-/* RB1の割り込み処理(値設定フェーズで数値の減少を行う) */
+/* -ボタンの割り込み処理(値設定フェーズで数値の減少を行う) */
 void MINUS_ISR(void)
 {
     if (!start)
@@ -653,7 +685,7 @@ void MINUS_ISR(void)
     }
 }
 
-/* RB2の割り込み処理(値設定フェーズで設定桁の増加を行う) */
+/* 選択桁上げボタンの割り込み処理(値設定フェーズで設定桁の増加を行う) */
 void UPDIGIT_ISR(void)
 {
     if (!start)
@@ -670,7 +702,7 @@ void UPDIGIT_ISR(void)
     }
 }
 
-/* RB3の割り込み処理(値設定フェーズで設定桁の減少を行う) */
+/* 選択桁下げボタンの割り込み処理(値設定フェーズで設定桁の減少を行う) */
 void DOWNDIGIT_ISR(void)
 {
     if (!start)
@@ -687,7 +719,7 @@ void DOWNDIGIT_ISR(void)
     }
 }
 
-/* RB4の割り込み処理(モードの変更を行う) */
+/* モード切り替えボタンの割り込み処理(モードの変更を行う) */
 void SWITCH_ISR(void)
 {
     wait_chattering();
@@ -703,7 +735,7 @@ void SWITCH_ISR(void)
     }
 }
 
-/* RB5の割り込み処理(設定フェーズではスタートを, 動作フェーズでは表示の有無の変更を行う) */
+/* スタートボタンの割り込み処理(設定フェーズではスタートを, 動作フェーズでは表示の有無の変更を行う) */
 void START_EA_ISR(void)
 {
     wait_chattering();
@@ -718,7 +750,7 @@ void START_EA_ISR(void)
             ENABLE = !ENABLE;
             if (!ENABLE)
             {
-                sleep_nixie();
+                sleep_nixie(255);
             }
             else
             {
