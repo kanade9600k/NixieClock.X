@@ -461,6 +461,10 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_second(COUNTUP);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -473,6 +477,10 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_minute(COUNTUP);
+                        }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
                         }
                     }
                     count = 0;
@@ -487,6 +495,10 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_hour(COUNTUP);
+                        }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
                         }
                     }
                     count = 0;
@@ -510,6 +522,10 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_day(COUNTUP);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -523,6 +539,10 @@ void PLUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_month(COUNTUP);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -535,6 +555,10 @@ void PLUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_year(COUNTUP);
+                        }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
                         }
                     }
                     count = 0;
@@ -570,6 +594,10 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_second(COUNTDOWN);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -583,6 +611,10 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_minute(COUNTDOWN);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -595,6 +627,10 @@ void MINUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_hour(COUNTDOWN);
+                        }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
                         }
                     }
                     count = 0;
@@ -618,6 +654,10 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_day(COUNTDOWN);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -631,6 +671,10 @@ void MINUS_ISR(void)
                             __delay_ms(SKIPSPAN);
                             updown_month(COUNTDOWN);
                         }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
+                        }
                     }
                     count = 0;
                     break;
@@ -643,6 +687,10 @@ void MINUS_ISR(void)
                             // 長押しモード突入
                             __delay_ms(SKIPSPAN);
                             updown_year(COUNTDOWN);
+                        }
+                        else
+                        {
+                            __delay_ms(1); // 長押し待ちの時に1ms * LONGPUSH待機
                         }
                     }
                     count = 0;
