@@ -42,62 +42,105 @@
 */
 
 #include "mcc_generated_files/mcc.h"
-#define SER RA0       // RA0をSERと名づける
-#define RCLK RA1      // RA1をRCLKと名づける
-#define UPPSRCLK RA2  // RA2をUPPSRCLKと名づける
-#define MIDSRCLK RA3  // RA3をMIDSRCLKと名づける
-#define LOWSRCLK RA4  // RA4をLOWSRCLKと名づける
-#define DOT RA6       // RA6をDOTと名づける
-#define UPDIGIT RB0   // RB0をUPDIGITと名づける
-#define DOWNDIGIT RB1 // RB1をDOWNDIGITと名づける
-#define PLUS RB2      // RB2をPLUSと名づける
-#define MINUS RB3     // RB3をMINUSと名づける
-#define SWITCH RB4    // RB4をSWITCHと名づける
-#define START_EA RB5  // RB5をSTART_EAと名づける
-#define LONGPUSH 500  // 長押し判定時間(ms)
-#define SKIPSPAN 100  // ボタン長押しのスキップ時に何msに1回カウントするかの時間
-#define MODENUM 2     // モード数
+#define SER RA0         // RA0をSERと名づける
+#define RCLK RA1        // RA1をRCLKと名づける
+#define UPPSRCLK RA2    // RA2をUPPSRCLKと名づける
+#define MIDSRCLK RA3    // RA3をMIDSRCLKと名づける
+#define LOWSRCLK RA4    // RA4をLOWSRCLKと名づける
+#define DOT RA6         // RA6をDOTと名づける
+#define LEFT RB0        // RB0をLEFTと名づける
+#define RIGHT RB1       // RB1をRIGHTと名づける
+#define PLUS RB2        // RB2をPLUSと名づける
+#define MINUS RB3       // RB3をMINUSと名づける
+#define RST RB4         // RB4をRSTと名づける
+#define START_STOP RB5  // RB5をSTART_STOPと名づける
+#define BLINKINGSPAN 50 // 点滅間隔(cs)
+#define LONGPUSH 1500   // 長押し判定時間(ms)
+#define PM_LONGPUSH 500 // 連続桁上げ判定時間(ms)(+, -ボタンの長押し判定時間)
+#define SKIPSPAN 50     // ボタン長押しのスキップ時に何msに1回カウントするかの時間(ms)
+#define MODENUM 2       // モード数
 
 /*
                          Main application
  */
 
+/* 列挙 */
+typedef enum
+{
+    LOWER = 0,
+    MIDDLE,
+    UPPER,
+    ALL
+} DIGIT;
+typedef enum
+{
+    CLOCK = 0,
+    CALENDAR,
+} MODE;
+
+typedef enum
+{
+    SHORT = 0,
+    LONG,
+    NG
+} PUSH_TYPE;
+
 /* 関数プロトタイプ宣言 */
 /* 割り込み関数 */
-void MYTMR0_ISR(void);    // タイマー0の割り込み処理
-void MYTMR2_ISR(void);    // タイマー2の割り込み処理(ISR : Interrupt Service Routin)
-void PLUS_ISR(void);      // RB0(+ボタン)の割り込み処理
-void MINUS_ISR(void);     // RB1(-ボタン)の割り込み処理
-void UPDIGIT_ISR(void);   // RB2(設定桁上げボタン)の割り込み処理
-void DOWNDIGIT_ISR(void); // RB3(設定桁下げボタン)の割り込み処理
-void SWITCH_ISR(void);    // RB4(設定モード切り替えボタン)の割り込み処理
-void START_EA_ISR(void);  // RB5(スタート・イネーブルボタン)の割り込み処理
+void MYTMR2_ISR(void);     // タイマー2の割り込み処理(ISR : Interrupt Service Routin)
+void PLUS_ISR(void);       // +ボタンの割り込み処理
+void MINUS_ISR(void);      // -ボタンの割り込み処理
+void LEFT_ISR(void);       // 左ボタンの割り込み処理
+void RIGHT_ISR(void);      // 右ボタンの割り込み処理
+void RST_ISR(void);        // 数値リセットボタンの割り込み処理
+void START_STOP_ISR(void); // スタート・ストップボタンの割り込み処理
 
 /* 自作関数 */
-void init_clock(void);             // タイマーの初期化設定
-void mainApp(void);                // メイン関数のwhileループでの処理
-void show_nixie(void);             // 現在のモードに合わせた値を表示する関数
-void show_time(void);              // 時間を表示する関数
-void show_date(void);              // 日付を表示する関数
-void show_values(unsigned char[]); // 値を表示する関数
-void up_value(void);               // 現在のモード，選択桁に合わせてカウントアップする関数
-void down_value(void);             // 現在のモード，選択桁に合わせてカウントダウンする関数
-void wait_chattering(void);        // チャタリングを待つ関数
-void sleep_nixie(unsigned char);   // ニキシー管を全消灯するための関数
+void mainApp(void);                       // メイン関数のwhileループでの処理
+void mode_clock(void);                    // 時計モードの関数
+void mode_calendar(void);                 // カレンダーモードの関数
+void wait_chattering(void);               // チャタリングを待つ関数
+void show_nixie(void);                    // 現在のモードに合わせた値を表示する関数
+void show_time(void);                     // 時間を表示する関数
+void show_date(void);                     // 日付を表示する関数
+void sleep_nixie(DIGIT);                  // ニキシー管を消灯するための関数
+void show_values(unsigned char[]);        // 値を表示する関数
+void setting_date(void);                  // 日付設定関数
+void setting_time(void);                  // 時刻設定関数
+void up_digit(void);                      // 選択桁を上げる関数
+void down_digit(void);                    // 選択桁を下げる関数
+void blinking_digit(void);                // 選択桁を点滅させる関数
+void up_mode(void);                       // モードを1つ進める関数
+void down_mode(void);                     // モードを1つ戻す関数
+void incr_selected_value(void);           // 現在のモード，選択桁に合わせて値を増加させる関数
+void decr_selected_value(void);           // 現在のモード，選択桁に合わせて値を減少させる関数
+PUSH_TYPE get_start_stop_push_type(void); // スタート・ストップボタンの押し方検知関数
+PUSH_TYPE get_reset_push_type(void);      // 数値リセットボタンの押し方検知関数
+PUSH_TYPE get_left_push_type(void);       // 左ボタンの押し方検知関数
+PUSH_TYPE get_right_push_type(void);      // 右ボタンの押し方検知関数
+PUSH_TYPE get_plus_push_type(void);       // +ボタンの押し方検知関数
+PUSH_TYPE get_minus_push_type(void);      // -ボタンの押し方検知関数
 
 /* グローバル変数宣言 */
-unsigned char csec = 0;           // センチ秒(1/100秒)
-unsigned char second = 0;         // 秒
-unsigned char minute = 0;         // 分
-unsigned char hour = 0;           // 時
-unsigned char day = 1;            // 日
-unsigned char month = 1;          // 月
-unsigned char year = 0;           // 年
-unsigned char enable = 1;         // ニキシー管の表示の可否 0: 消灯, 1: 点灯
-unsigned char mode = 0;           // 0 : 時計, 1 : カレンダー
-unsigned char start = 0;          // カウント開始フラグ
-unsigned char selected_digit = 0; // 編集中の桁を示すフラグ 0 : 下位2桁, 1 : 中位2桁, 2 : 上位2桁
-unsigned char is_light = 1;       // 0 : 消灯，1 : 点灯
+unsigned char csec = 0;                 // センチ秒(1/100秒)
+unsigned char second = 0;               // 秒
+unsigned char minute = 0;               // 分
+unsigned char hour = 0;                 // 時
+unsigned char day = 1;                  // 日
+unsigned char month = 1;                // 月
+unsigned char year = 0;                 // 年
+DIGIT selected_digit = LOWER;           // 選択中の桁
+MODE mode = CALENDAR;                   // 現在のモード
+unsigned char is_active = 0;            // カウント開始フラグ
+unsigned char is_tmr2_interrupt = 0;    // タイマー2の割り込みが起こったか
+int tmr2_count = 0;                     // タイマー2の割り込みカウンタ
+unsigned char is_start_stop_pushed = 0; // スタート・ストップボタンが押されたか
+unsigned char is_reset_pushed = 0;      // 数値リセットボタンが押されたか
+unsigned char is_left_pushed = 0;       // 左ボタンが押されたか
+unsigned char is_right_pushed = 0;      // 右ボタンが押されたか
+unsigned char is_plus_pushed = 0;       // プラスボタンが押されたか
+unsigned char is_minus_pushed = 0;      // マイナスボタンが押されたか
+unsigned char is_nixie_on = 1;          // ニキシー管の表示の可否 0: 消灯, 1: 点灯
 
 void main(void)
 {
@@ -113,22 +156,20 @@ void main(void)
     // Enable the Peripheral Interrupts
     INTERRUPT_PeripheralInterruptEnable();
 
-    // タイマー0の割り込み時に呼び出される関数
-    TMR0_SetInterruptHandler(MYTMR0_ISR);
     // タイマー2の割り込み時に呼び出される関数
     TMR2_SetInterruptHandler(MYTMR2_ISR);
     // RB0の割り込み時に呼び出される関数
-    IOCBF0_SetInterruptHandler(UPDIGIT_ISR);
+    IOCBF0_SetInterruptHandler(LEFT_ISR);
     // RB1の割り込み時に呼び出される関数
-    IOCBF1_SetInterruptHandler(DOWNDIGIT_ISR);
+    IOCBF1_SetInterruptHandler(RIGHT_ISR);
     // RB2の割り込み時に呼び出される関数
     IOCBF2_SetInterruptHandler(PLUS_ISR);
     // RB3の割り込み時に呼び出される処理
     IOCBF3_SetInterruptHandler(MINUS_ISR);
     // RB4の割り込み時に呼び出される処理
-    IOCBF4_SetInterruptHandler(SWITCH_ISR);
+    IOCBF4_SetInterruptHandler(RST_ISR);
     // RB5の割り込み時に呼び出される処理
-    IOCBF5_SetInterruptHandler(START_EA_ISR);
+    IOCBF5_SetInterruptHandler(START_STOP_ISR);
 
     // Disable the Global Interrupts
     // INTERRUPT_GlobalInterruptDisable();
@@ -136,19 +177,6 @@ void main(void)
     // Disable the Peripheral Interrupts
     // INTERRUPT_PeripheralInterruptDisable();
 
-    // ここに初期の時間合わせ処理を書く
-    init_clock();
-
-    while (start)
-    {
-        // Add your application code
-        mainApp(); // while内のメイン処理はmainApp()内に記述する
-    }
-}
-
-/* 時計の初期化設定 */
-void init_clock(void)
-{
     // 出力初期化
     SER = 0;
     RCLK = 0;
@@ -160,36 +188,349 @@ void init_clock(void)
     RB6 = 0;
     RB7 = 0;
 
-    while (!start)
+    setting_date();
+    setting_time();
+
+    while (1)
     {
-        ; // 初期設定はすべて割り込みで行う
+        // Add your application code
+        mainApp(); // while内のメイン処理はmainApp()内に記述する
     }
 }
 
 /* while内のメイン処理 */
 void mainApp(void)
 {
-    // 全部割り込みでする?
-    // if (enable)
-    // {
-    //     if (is_write)
-    //     {
-    //         is_write = 0; // 書き込みフラグを降ろす
-    //         write_74HC595();
-    //     }
-    //     if (!enable)
-    //     {                     // 途中で割り込みが発生したときの処理
-    //         sleep_nixie(3); // 全消灯
-    //     }
-    // }
-
-    if (enable)
+    if (is_nixie_on)
     {
         show_nixie();
     }
     else
     {
-        sleep_nixie(3);
+        sleep_nixie(ALL);
+    }
+
+    switch (mode)
+    {
+    case CLOCK:
+        mode_clock();
+        break;
+
+    case CALENDAR:
+        mode_calendar();
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* 時計モード */
+void mode_clock(void)
+{
+    if (is_start_stop_pushed)
+    {
+        switch (get_start_stop_push_type())
+        {
+        case SHORT:
+            is_nixie_on = 1; // 点灯
+            break;
+
+        case LONG:
+            is_nixie_on = 0; // 消灯
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_reset_pushed)
+    {
+        switch (get_reset_push_type())
+        {
+        case SHORT:
+            break;
+
+        case LONG:
+            setting_time();
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_left_pushed)
+    {
+        if (get_left_push_type() != NG)
+        {
+            up_mode();
+        }
+    }
+
+    if (is_right_pushed)
+    {
+        if (get_right_push_type() != NG)
+        {
+            down_mode();
+        }
+    }
+}
+
+/* カレンダーモード */
+void mode_calendar(void)
+{
+    if (is_start_stop_pushed)
+    {
+        switch (get_start_stop_push_type())
+        {
+        case SHORT:
+            is_nixie_on = 1; // 点灯
+            break;
+
+        case LONG:
+            is_nixie_on = 0; // 消灯
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_reset_pushed)
+    {
+        switch (get_reset_push_type())
+        {
+        case SHORT:
+            break;
+
+        case LONG:
+            setting_date();
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_left_pushed)
+    {
+        if (get_left_push_type() != NG)
+        {
+            up_mode();
+        }
+    }
+
+    if (is_right_pushed)
+    {
+        if (get_right_push_type() != NG)
+        {
+            down_mode();
+        }
+    }
+}
+
+/* 日付設定 */
+void setting_date(void)
+{
+    mode = CALENDAR;
+    show_nixie();
+
+    while (1)
+    {
+        // ループを抜ける
+        if (is_start_stop_pushed)
+        {
+            if (get_start_stop_push_type() != NG)
+            {
+                break;
+            }
+        }
+
+        // 選択桁上げの処理
+        if (is_left_pushed)
+        {
+            if (get_left_push_type() != NG)
+            {
+                up_digit();
+            }
+        }
+
+        // 選択桁下げの処理
+        if (is_right_pushed)
+        {
+            if (get_right_push_type() != NG)
+            {
+                down_digit();
+            }
+        }
+
+        // 選択桁の数値上げ処理
+        if (is_plus_pushed)
+        {
+            switch (get_plus_push_type())
+            {
+            case SHORT:
+                incr_selected_value();
+                show_nixie();
+                break;
+
+            case LONG:
+                while (PLUS)
+                {
+                    // 連続桁上げ
+                    incr_selected_value();
+                    show_nixie();
+                    __delay_ms(SKIPSPAN);
+                }
+
+            case NG:
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        // 選択桁の数値下げ処理
+        if (is_minus_pushed)
+        {
+            switch (get_minus_push_type())
+            {
+            case SHORT:
+                decr_selected_value();
+                show_nixie();
+                break;
+
+            case LONG:
+                while (MINUS)
+                {
+                    // 連続桁下げ
+                    decr_selected_value();
+                    show_nixie();
+                    __delay_ms(SKIPSPAN);
+                }
+
+            case NG:
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        // 選択桁の点滅処理
+        if (is_tmr2_interrupt)
+        {
+            blinking_digit();
+        }
+    }
+}
+
+/* 時刻設定関数 */
+void setting_time(void)
+{
+    is_active = 0; // 一旦時計を止める
+    mode = CLOCK;
+    show_nixie();
+
+    while (1)
+    {
+        // ループを抜ける
+        if (is_start_stop_pushed)
+        {
+            if (get_start_stop_push_type() != NG)
+            {
+                is_active = 1;
+                break;
+            }
+        }
+
+        // 選択桁上げの処理
+        if (is_left_pushed)
+        {
+            if (get_left_push_type() != NG)
+            {
+                up_digit();
+            }
+        }
+
+        // 選択桁下げの処理
+        if (is_right_pushed)
+        {
+            if (get_right_push_type() != NG)
+            {
+                down_digit();
+            }
+        }
+
+        // 選択桁の数値上げ処理
+        if (is_plus_pushed)
+        {
+            switch (get_plus_push_type())
+            {
+            case SHORT:
+                incr_selected_value();
+                show_nixie();
+                break;
+
+            case LONG:
+                while (PLUS)
+                {
+                    // 連続桁上げ
+                    incr_selected_value();
+                    show_nixie();
+                    __delay_ms(SKIPSPAN);
+                }
+
+            case NG:
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        // 選択桁の数値下げ処理
+        if (is_minus_pushed)
+        {
+            switch (get_minus_push_type())
+            {
+            case SHORT:
+                decr_selected_value();
+                show_nixie();
+                break;
+
+            case LONG:
+                while (MINUS)
+                {
+                    // 連続桁下げ
+                    decr_selected_value();
+                    show_nixie();
+                    __delay_ms(SKIPSPAN);
+                }
+
+            case NG:
+                break;
+
+            default:
+                break;
+            }
+        }
+        // 選択桁の点滅処理
+        if (is_tmr2_interrupt)
+        {
+            blinking_digit();
+        }
     }
 }
 
@@ -198,11 +539,11 @@ void show_nixie(void)
 {
     switch (mode)
     {
-    case 0: // 時計モード
+    case CLOCK:
         show_time();
         break;
 
-    case 1: // カレンダーモード
+    case CALENDAR:
         show_date();
         break;
 
@@ -233,15 +574,15 @@ void show_values(unsigned char values[3])
     unsigned char bcd_code; // BCDに変換したコード
     unsigned char compared; // 比較用の値
 
-    for (signed char i = 0; i < 3; i++)
+    for (DIGIT digit = LOWER; digit <= UPPER; digit++)
     {
         // シフト演算は暗黙的にintになっていしまうので unsigned char にキャストする
-        bcd_code = (unsigned char)((values[i] / 10) << 4) + (values[i] % 10);
+        bcd_code = (unsigned char)((values[digit] / 10) << 4) + (values[digit] % 10);
         compared = 0b00000001; // 1ビットごとに比較を行うための値
 
-        switch (i)
+        switch (digit)
         {
-        case 0:
+        case LOWER:
             for (unsigned char j = 0; j < 8; j++)
             {
                 SER = (__bit)((bcd_code & compared) >> j); // 各ビットが1か0かを記録 (__bit型にキャスト)
@@ -251,7 +592,7 @@ void show_values(unsigned char values[3])
             }
             break;
 
-        case 1:
+        case MIDDLE:
             for (unsigned char j = 0; j < 8; j++)
             {
                 SER = (__bit)((bcd_code & compared) >> j); // 各ビットが1か0かを記録 (__bit型にキャスト)
@@ -261,7 +602,7 @@ void show_values(unsigned char values[3])
             }
             break;
 
-        case 2:
+        case UPPER:
             for (unsigned char j = 0; j < 8; j++)
             {
                 SER = (__bit)((bcd_code & compared) >> j); // 各ビットが1か0かを記録 (__bit型にキャスト)
@@ -281,11 +622,11 @@ void show_values(unsigned char values[3])
 }
 
 /* ニキシー管を消灯させるための関数 0: 下位2桁 1: 中位2桁 2: 上位2桁 3: 全桁 */
-void sleep_nixie(unsigned char digit)
+void sleep_nixie(DIGIT digit)
 {
     DOT = 0; // dotを消灯
 
-    if (digit == 3 || digit == 0)
+    if (digit == ALL || digit == LOWER)
     {
         for (unsigned char i = 0; i < 8; i++)
         {
@@ -295,7 +636,7 @@ void sleep_nixie(unsigned char digit)
         }
     }
 
-    if (digit == 3 || digit == 1)
+    if (digit == ALL || digit == MIDDLE)
     {
         for (unsigned char i = 0; i < 8; i++)
         {
@@ -305,7 +646,7 @@ void sleep_nixie(unsigned char digit)
         }
     }
 
-    if (digit == 3 || digit == 2)
+    if (digit == ALL || digit == UPPER)
     {
         for (unsigned char i = 0; i < 8; i++)
         {
@@ -319,37 +660,162 @@ void sleep_nixie(unsigned char digit)
     RCLK = 0;
 }
 
-/* チャタリングを待つ関数 */
-void wait_chattering(void)
+/* 選択桁を上げる関数 */
+void up_digit(void)
 {
-    __delay_ms(15);
+    (selected_digit < UPPER) ? selected_digit++ : (selected_digit = LOWER);
 }
 
-/* TMR0の割り込み処理(設定桁を点滅) */
-void MYTMR0_ISR(void)
+/* 選択桁を下げる関数 */
+void down_digit(void)
 {
-    if (!start)
+    (selected_digit > LOWER) ? selected_digit-- : (selected_digit = UPPER);
+}
+
+/* 選択桁のを点滅させる関数 */
+void blinking_digit(void)
+{
+    is_tmr2_interrupt = 0;
+    tmr2_count++;
+
     {
-        if (is_light)
+        if (tmr2_count < BLINKINGSPAN)
         {
-            is_light = 0;
+            show_nixie();
+        }
+        else if (tmr2_count < 2 * BLINKINGSPAN)
+        {
             sleep_nixie(selected_digit);
         }
         else
         {
-            is_light = 1;
-            show_nixie();
+            tmr2_count = 0;
         }
     }
+}
+
+/* モードを1つ進める関数 */
+void up_mode(void)
+{
+    (mode < (MODENUM - 1)) ? mode++ : (mode = 0);
+}
+
+/* モードを1つ戻す関数 */
+void down_mode(void)
+{
+    (mode > 0) ? mode-- : (mode = (MODENUM - 1));
+}
+
+/* 現在のモード，選択桁に応じて値を増やす関数 */
+void incr_selected_value(void)
+{
+    switch (mode)
+    {
+    case CLOCK:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (second < 59) ? second++ : (second = 0);
+            break;
+
+        case MIDDLE:
+            (minute < 59) ? minute++ : (minute = 0);
+            break;
+
+        case UPPER:
+            (hour < 23) ? hour++ : (hour = 0);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    case CALENDAR:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (day < 31) ? day++ : (day = 1);
+            break;
+
+        case MIDDLE:
+            (month < 12) ? month++ : (month = 1);
+            break;
+
+        case UPPER:
+            (year < 99) ? year++ : (year = 0);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* 現在のモード，選択桁に応じて値を減らす関数 */
+void decr_selected_value(void)
+{
+    switch (mode)
+    {
+    case CLOCK:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (second > 0) ? second-- : (second = 59);
+            break;
+
+        case MIDDLE:
+            (minute > 0) ? minute-- : (minute = 59);
+            break;
+
+        case UPPER:
+            (hour > 0) ? hour-- : (hour = 23);
+            break;
+
+        default:
+            break;
+        }
+
+    case CALENDAR:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (day > 1) ? day-- : (day = 31);
+            break;
+
+        case MIDDLE:
+            (month > 1) ? month-- : (month = 12);
+            break;
+
+        case UPPER:
+            (year > 0) ? year-- : (year = 99);
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+/* チャタリングを待つ関数 */
+void wait_chattering(void)
+{
+    __delay_ms(25);
 }
 
 /* TMR2の割り込み処理(1/100 sごとに時計を更新) */
 void MYTMR2_ISR(void)
 {
-    if (start)
+    is_tmr2_interrupt = 1;
+
+    if (is_active)
     {
-        // 割り込みは1/100 s周期
-        csec++;
+        // 時間関係はずれると困るので割り込み内で処理
+        csec++; // 割り込みは1/100 s周期
         if (csec > 99)
         {
             csec = 0;
@@ -402,219 +868,210 @@ void MYTMR2_ISR(void)
     }
 }
 
-/* +ボタンの割り込み処理(値設定フェーズで数値の増加を行う) */
+/* ボタン関係 */
+/* スタート・ストップボタンの割り込み処理 */
+void START_STOP_ISR(void)
+{
+    is_start_stop_pushed = 1;
+}
+
+/* スタート・ストップボタンの押し方検知関数 */
+PUSH_TYPE get_start_stop_push_type(void)
+{
+    is_start_stop_pushed = 0;
+    wait_chattering();
+
+    if (START_STOP)
+    {
+        int count = 0;
+
+        // 長押し検知
+        while (START_STOP)
+        {
+            if (count++ > LONGPUSH)
+            {
+                break;
+            }
+            __delay_ms(1);
+        }
+
+        return START_STOP ? LONG : SHORT;
+    }
+    else
+    {
+        return NG;
+    }
+}
+
+/* 数値リセットボタンの割り込み処理 */
+void RST_ISR(void)
+{
+    is_reset_pushed = 1;
+}
+
+/* 数値リセットボタンの押し方検知関数 */
+PUSH_TYPE get_reset_push_type(void)
+{
+    is_reset_pushed = 0;
+    wait_chattering();
+
+    if (RST)
+    {
+        int count = 0;
+
+        // 長押し検知
+        while (RST)
+        {
+            if (count++ > LONGPUSH)
+            {
+                break;
+            }
+            __delay_ms(1);
+        }
+
+        return RST ? LONG : SHORT;
+    }
+    else
+    {
+        return NG;
+    }
+}
+
+/* 左ボタンの割り込み処理 */
+void LEFT_ISR(void)
+{
+    is_left_pushed = 1;
+}
+
+/* 左ボタンの押し方検知関数 */
+PUSH_TYPE get_left_push_type(void)
+{
+    is_left_pushed = 0;
+    wait_chattering();
+
+    if (LEFT)
+    {
+        int count = 0;
+
+        // 長押し検知
+        while (LEFT)
+        {
+            if (count++ > LONGPUSH)
+            {
+                break;
+            }
+            __delay_ms(1);
+        }
+
+        return LEFT ? LONG : SHORT;
+    }
+    else
+    {
+        return NG;
+    }
+}
+
+/* 右ボタンの割り込み処理 */
+void RIGHT_ISR(void)
+{
+    is_right_pushed = 1;
+}
+
+/* 右ボタンの押し方検知関数 */
+PUSH_TYPE get_right_push_type(void)
+{
+    is_right_pushed = 0;
+    wait_chattering();
+
+    if (RIGHT)
+    {
+        int count = 0;
+
+        // 長押し検知
+        while (RIGHT)
+        {
+            if (count++ > LONGPUSH)
+            {
+                break;
+            }
+            __delay_ms(1);
+        }
+
+        return RIGHT ? LONG : SHORT;
+    }
+    else
+    {
+        return NG;
+    }
+}
+
+/* +ボタンの割り込み処理 */
 void PLUS_ISR(void)
 {
-    if (!start)
-    {
-        int count = 0;
-        wait_chattering();
-        if (PLUS)
-        {
-            up_value();
-            show_nixie();
-
-            // 長押し検知
-            while (PLUS)
-            {
-                if (count++ > LONGPUSH)
-                {
-                    break;
-                }
-                __delay_ms(1);
-            }
-
-            // 長押し時の処理
-            while (PLUS)
-            {
-                // 連続桁上げ
-                up_value();
-                show_nixie();
-                __delay_ms(SKIPSPAN);
-            }
-        }
-    }
+    is_plus_pushed = 1;
 }
 
-/* 現在のモード，選択桁に応じて値を増やす関数 */
-void up_value(void)
+/* +ボタンの押し方検知関数 */
+PUSH_TYPE get_plus_push_type(void)
 {
-    switch (mode)
+    is_plus_pushed = 0;
+    wait_chattering();
+
+    if (PLUS)
     {
-    case 0: // 時計モード
-        switch (selected_digit)
+        tmr2_count = 0; // 点滅周期のリセット
+        int count = 0;
+
+        // 長押し検知
+        while (PLUS)
         {
-        case 0:
-            (second < 59) ? second++ : (second = 0);
-            break;
-
-        case 1:
-            (minute < 59) ? minute++ : (minute = 0);
-            break;
-
-        case 2:
-            (hour < 23) ? hour++ : (hour = 0);
-            break;
-
-        default:
-            break;
+            if (count++ > PM_LONGPUSH)
+            {
+                break;
+            }
+            __delay_ms(1);
         }
 
-    case 1: // カレンダーモード
-        switch (selected_digit)
-        {
-        case 0:
-            (day < 31) ? day++ : (day = 1);
-            break;
-
-        case 1:
-            (month < 12) ? month++ : (month = 1);
-            break;
-
-        case 2:
-            (year < 99) ? year++ : (year = 0);
-            break;
-
-        default:
-            break;
-        }
+        return PLUS ? LONG : SHORT;
+    }
+    else
+    {
+        return NG;
     }
 }
 
-/* -ボタンの割り込み処理(値設定フェーズで数値の減少を行う) */
+/* -ボタンの割り込み処理 */
 void MINUS_ISR(void)
 {
-    if (!start)
+    is_minus_pushed = 1;
+}
+
+/* -ボタンの押し方検知関数 */
+PUSH_TYPE get_minus_push_type(void)
+{
+    is_minus_pushed = 0;
+    wait_chattering();
+
+    if (MINUS)
     {
+        tmr2_count = 0; // 点滅周期のリセット
         int count = 0;
-        wait_chattering();
-        if (MINUS)
-        {
-            down_value();
-            show_nixie();
 
-            // 長押し検知
-            while (MINUS)
+        // 長押し検知
+        while (MINUS)
+        {
+            if (count++ > PM_LONGPUSH)
             {
-                if (count++ > LONGPUSH)
-                {
-                    break;
-                }
-                __delay_ms(1);
+                break;
             }
-
-            // 長押し時の処理
-            while (MINUS)
-            {
-                // 連続桁上げ
-                down_value();
-                show_nixie();
-                __delay_ms(SKIPSPAN);
-            }
+            __delay_ms(1);
         }
+
+        return MINUS ? LONG : SHORT;
     }
-}
-
-/* 現在のモード，選択桁に応じて値を減らす関数 */
-void down_value(void)
-{
-    switch (mode)
+    else
     {
-    case 0: // 時計モード
-        switch (selected_digit)
-        {
-        case 0:
-            (second > 0) ? second-- : (second = 59);
-            break;
-
-        case 1:
-            (minute > 0) ? minute-- : (minute = 59);
-            break;
-
-        case 2:
-            (hour > 0) ? hour-- : (hour = 23);
-            break;
-
-        default:
-            break;
-        }
-
-    case 1: // カレンダーモード
-        switch (selected_digit)
-        {
-        case 0:
-            (day > 1) ? day-- : (day = 31);
-            break;
-
-        case 1:
-            (month > 1) ? month-- : (month = 12);
-            break;
-
-        case 2:
-            (year > 0) ? year-- : (year = 99);
-            break;
-
-        default:
-            break;
-        }
-    }
-}
-
-/* 選択桁上げボタンの割り込み処理(値設定フェーズで設定桁の増加を行う) */
-void UPDIGIT_ISR(void)
-{
-    if (!start)
-    {
-        wait_chattering();
-        if (UPDIGIT)
-        {
-            (selected_digit < 2) ? selected_digit++ : (selected_digit = 0);
-        }
-    }
-}
-
-/* 選択桁下げボタンの割り込み処理(値設定フェーズで設定桁の減少を行う) */
-void DOWNDIGIT_ISR(void)
-{
-    if (!start)
-    {
-        wait_chattering();
-        if (DOWNDIGIT)
-        {
-            (selected_digit > 0) ? selected_digit-- : (selected_digit = 2);
-        }
-    }
-}
-
-/* モード切り替えボタンの割り込み処理(モードの変更を行う(ニキシー管表示時のみ)) */
-void SWITCH_ISR(void)
-{
-    wait_chattering();
-    if (SWITCH && enable)
-    {
-        (mode < (MODENUM - 1)) ? mode++ : (mode = 0);
-        show_nixie();
-    }
-}
-
-/* スタートボタンの割り込み処理(設定フェーズではスタートを, 動作フェーズでは表示の有無の変更を行う) */
-void START_EA_ISR(void)
-{
-    wait_chattering();
-    if (START_EA)
-    {
-        start = 1; // 動作開始
-
-        enable = !enable;
-
-        if (!enable)
-        {
-            sleep_nixie(3);
-        }
-        else
-        {
-            show_nixie();
-        }
+        return NG;
     }
 }
 
