@@ -58,7 +58,6 @@
 #define LONGPUSH 1500   // 長押し判定時間(ms)
 #define PM_LONGPUSH 500 // 連続桁上げ判定時間(ms)(+, -ボタンの長押し判定時間)
 #define SKIPSPAN 50     // ボタン長押しのスキップ時に何msに1回カウントするかの時間(ms)
-#define MODENUM 2       // モード数
 
 /*
                          Main application
@@ -67,22 +66,35 @@
 /* 列挙 */
 typedef enum
 {
+    CSEC = 0,
+    SECOND,
+    MINUTE,
+    HOUR,
+    TIME_NUM,
+} TIME;
+
+typedef enum
+{
     LOWER = 0,
     MIDDLE,
     UPPER,
-    ALL
+    ALL,
 } DIGIT;
 typedef enum
 {
     CLOCK = 0,
     CALENDAR,
+    TIMER,
+    STOPWATCH_S,
+    STOPWATCH_L,
+    MODE_NUM,
 } MODE;
 
 typedef enum
 {
     SHORT = 0,
     LONG,
-    NG
+    NG,
 } PUSH_TYPE;
 
 /* 関数プロトタイプ宣言 */
@@ -96,13 +108,15 @@ void RST_ISR(void);        // 数値リセットボタンの割り込み処理
 void START_STOP_ISR(void); // スタート・ストップボタンの割り込み処理
 
 /* 自作関数 */
-void mainApp(void);                       // メイン関数のwhileループでの処理
-void mode_clock(void);                    // 時計モードの関数
-void mode_calendar(void);                 // カレンダーモードの関数
-void wait_chattering(void);               // チャタリングを待つ関数
-void show_nixie(void);                    // 現在のモードに合わせた値を表示する関数
-void show_time(void);                     // 時間を表示する関数
-void show_date(void);                     // 日付を表示する関数
+void mainApp(void);         // メイン関数のwhileループでの処理
+void mode_clock(void);      // 時計モードの関数
+void mode_calendar(void);   // カレンダーモードの関数
+void mode_timer(void);      // タイマーモードの関数
+void mode_stopwatch(void);  // ストップウォッチモードの関数
+void wait_chattering(void); // チャタリングを待つ関数
+void show_nixie(void);      // 現在のモードに合わせた値を表示する関数
+// void show_time(void);                     // 時間を表示する関数
+// void show_date(void);                     // 日付を表示する関数
 void sleep_nixie(DIGIT);                  // ニキシー管を消灯するための関数
 void show_values(unsigned char[]);        // 値を表示する関数
 void setting_date(void);                  // 日付設定関数
@@ -122,16 +136,22 @@ PUSH_TYPE get_plus_push_type(void);       // +ボタンの押し方検知関数
 PUSH_TYPE get_minus_push_type(void);      // -ボタンの押し方検知関数
 
 /* グローバル変数宣言 */
-unsigned char csec = 0;                 // センチ秒(1/100秒)
-unsigned char second = 0;               // 秒
-unsigned char minute = 0;               // 分
-unsigned char hour = 0;                 // 時
+unsigned char clock_time[TIME_NUM] = {0};     // 時計の時間
+unsigned char timer_time[TIME_NUM] = {0};     // タイマーの時間
+unsigned char stopwatch_time[TIME_NUM] = {0}; // ストップウォッチの時間
+// unsigned char csec = 0;                       // センチ秒(1/100秒)
+// unsigned char second = 0;                     // 秒
+// unsigned char minute = 0;                     // 分
+// unsigned char hour = 0;                       // 時
 unsigned char day = 1;                  // 日
 unsigned char month = 1;                // 月
 unsigned char year = 0;                 // 年
 DIGIT selected_digit = LOWER;           // 選択中の桁
 MODE mode = CALENDAR;                   // 現在のモード
-unsigned char is_active = 0;            // カウント開始フラグ
+unsigned char is_clock_active = 0;      // 時計が作動中か否か
+unsigned char is_timer_active = 0;      // タイマーが作動中か否か
+unsigned char is_timer_end = 1;         // タイマーの設定時間に達したか否か
+unsigned char is_stopwatch_active = 0;  // ストップウォッチが作動中か否か
 unsigned char is_tmr2_interrupt = 0;    // タイマー2の割り込みが起こったか
 int tmr2_count = 0;                     // タイマー2の割り込みカウンタ
 unsigned char is_start_stop_pushed = 0; // スタート・ストップボタンが押されたか
@@ -188,8 +208,12 @@ void main(void)
     RB6 = 0;
     RB7 = 0;
 
+    mode = CALENDAR;
     setting_date();
+
+    mode = CLOCK;
     setting_time();
+    is_clock_active = 1;
 
     while (1)
     {
@@ -218,6 +242,21 @@ void mainApp(void)
 
     case CALENDAR:
         mode_calendar();
+        break;
+
+    case TIMER:
+        mode_timer();
+        break;
+
+    case STOPWATCH_S:
+        mode_stopwatch();
+        break;
+
+    case STOPWATCH_L:
+        mode_stopwatch();
+        break;
+
+    case MODE_NUM:
         break;
 
     default:
@@ -255,7 +294,10 @@ void mode_clock(void)
             break;
 
         case LONG:
+            is_clock_active = 0; // 一旦時計を止める
             setting_time();
+            is_clock_active = 1;
+            break;
 
         case NG:
             break;
@@ -339,10 +381,141 @@ void mode_calendar(void)
     }
 }
 
+/* タイマーモード */
+void mode_timer(void)
+{
+    if (is_start_stop_pushed)
+    {
+        switch (get_start_stop_push_type())
+        {
+        case SHORT:
+            is_nixie_on = 1;                    // 点灯
+            is_timer_active = !is_timer_active; // スタート・ストップ
+            break;
+
+        case LONG:
+            is_nixie_on = 0; // 消灯
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_reset_pushed)
+    {
+        switch (get_reset_push_type())
+        {
+        case SHORT:
+            // タイマーリセット
+            timer_time[CSEC] = 0;
+            timer_time[SECOND] = 0;
+            timer_time[MINUTE] = 0;
+            timer_time[HOUR] = 0;
+            is_timer_end = 1;
+            is_timer_active = 0;
+            break;
+
+        case LONG:
+            setting_time();
+            is_timer_end = 0;
+            is_timer_active = 1;
+            break;
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_left_pushed)
+    {
+        if (get_left_push_type() != NG)
+        {
+            up_mode();
+        }
+    }
+
+    if (is_right_pushed)
+    {
+        if (get_right_push_type() != NG)
+        {
+            down_mode();
+        }
+    }
+}
+
+/* ストップウォッチモード */
+void mode_stopwatch(void)
+{
+    if (is_start_stop_pushed)
+    {
+        switch (get_start_stop_push_type())
+        {
+        case SHORT:
+            is_nixie_on = 1;                            // 点灯
+            is_stopwatch_active = !is_stopwatch_active; // スタート・ストップ
+            break;
+
+        case LONG:
+            is_nixie_on = 0; // 消灯
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_reset_pushed)
+    {
+        switch (get_reset_push_type())
+        {
+        case SHORT:
+            // ストップウォッチリセット
+            stopwatch_time[CSEC] = 0;
+            stopwatch_time[SECOND] = 0;
+            stopwatch_time[MINUTE] = 0;
+            stopwatch_time[HOUR] = 0;
+            is_stopwatch_active = 0;
+            break;
+
+        case LONG:
+            break;
+
+        case NG:
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    if (is_left_pushed)
+    {
+        if (get_left_push_type() != NG)
+        {
+            up_mode();
+        }
+    }
+
+    if (is_right_pushed)
+    {
+        if (get_right_push_type() != NG)
+        {
+            down_mode();
+        }
+    }
+}
+
 /* 日付設定 */
 void setting_date(void)
 {
-    mode = CALENDAR;
     show_nixie();
 
     while (1)
@@ -439,8 +612,6 @@ void setting_date(void)
 /* 時刻設定関数 */
 void setting_time(void)
 {
-    is_active = 0; // 一旦時計を止める
-    mode = CLOCK;
     show_nixie();
 
     while (1)
@@ -450,7 +621,6 @@ void setting_time(void)
         {
             if (get_start_stop_push_type() != NG)
             {
-                is_active = 1;
                 break;
             }
         }
@@ -540,11 +710,47 @@ void show_nixie(void)
     switch (mode)
     {
     case CLOCK:
-        show_time();
-        break;
+    {
+        // {}でブロックを作らないとswitch文内での変数定義ができない
+        unsigned char time[3] = {clock_time[SECOND], clock_time[MINUTE], clock_time[HOUR]};
+        show_values(time);
+        DOT = (clock_time[CSEC] < 50) ? 0 : 1;
+    }
+    break;
 
     case CALENDAR:
-        show_date();
+    {
+        unsigned char date[3] = {day, month, year};
+        show_values(date);
+        DOT = 1;
+    }
+    break;
+
+    case TIMER:
+    {
+        unsigned char time[3] = {timer_time[SECOND], timer_time[MINUTE], timer_time[HOUR]};
+        show_values(time);
+        DOT = (timer_time[CSEC] < 50) ? 0 : 1;
+    }
+    break;
+
+    case STOPWATCH_S:
+    {
+        unsigned char time[3] = {stopwatch_time[CSEC], stopwatch_time[SECOND], stopwatch_time[MINUTE]};
+        show_values(time);
+        DOT = (stopwatch_time[CSEC] < 50) ? 0 : 1;
+    }
+    break;
+
+    case STOPWATCH_L:
+    {
+        unsigned char time[3] = {stopwatch_time[SECOND], stopwatch_time[MINUTE], stopwatch_time[HOUR]};
+        show_values(time);
+        DOT = (stopwatch_time[CSEC] < 50) ? 0 : 1;
+    }
+    break;
+
+    case MODE_NUM:
         break;
 
     default:
@@ -552,21 +758,21 @@ void show_nixie(void)
     }
 }
 
-/* 時間を表示する関数 */
-void show_time(void)
-{
-    unsigned char time[3] = {second, minute, hour};
-    show_values(time);
-    DOT = (csec < 50) ? 0 : 1;
-}
+// /* 時間を表示する関数 */
+// void show_time(void)
+// {
+//     unsigned char time[3] = {second, minute, hour};
+//     show_values(time);
+//     DOT = (csec < 50) ? 0 : 1;
+// }
 
-/* 日付を表示する関数 */
-void show_date(void)
-{
-    unsigned char date[3] = {day, month, year};
-    show_values(date);
-    DOT = 1;
-}
+// /* 日付を表示する関数 */
+// void show_date(void)
+// {
+//     unsigned char date[3] = {day, month, year};
+//     show_values(date);
+//     DOT = 1;
+// }
 
 /* 受け取った値を表示する関数 (0: 下位2桁, 1: 中位2桁, 2: 上位2桁)*/
 void show_values(unsigned char values[3])
@@ -697,13 +903,13 @@ void blinking_digit(void)
 /* モードを1つ進める関数 */
 void up_mode(void)
 {
-    (mode < (MODENUM - 1)) ? mode++ : (mode = 0);
+    (mode < (MODE_NUM - 1)) ? mode++ : (mode = 0);
 }
 
 /* モードを1つ戻す関数 */
 void down_mode(void)
 {
-    (mode > 0) ? mode-- : (mode = (MODENUM - 1));
+    (mode > 0) ? mode-- : (mode = (MODE_NUM - 1));
 }
 
 /* 現在のモード，選択桁に応じて値を増やす関数 */
@@ -715,15 +921,15 @@ void incr_selected_value(void)
         switch (selected_digit)
         {
         case LOWER:
-            (second < 59) ? second++ : (second = 0);
+            (clock_time[SECOND] < 59) ? clock_time[SECOND]++ : (clock_time[SECOND] = 0);
             break;
 
         case MIDDLE:
-            (minute < 59) ? minute++ : (minute = 0);
+            (clock_time[MINUTE] < 59) ? clock_time[MINUTE]++ : (clock_time[MINUTE] = 0);
             break;
 
         case UPPER:
-            (hour < 23) ? hour++ : (hour = 0);
+            (clock_time[HOUR] < 23) ? clock_time[HOUR]++ : (clock_time[HOUR] = 0);
             break;
 
         default:
@@ -751,6 +957,35 @@ void incr_selected_value(void)
         }
         break;
 
+    case TIMER:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (timer_time[SECOND] < 59) ? timer_time[SECOND]++ : (timer_time[SECOND] = 0);
+            break;
+
+        case MIDDLE:
+            (timer_time[MINUTE] < 59) ? timer_time[MINUTE]++ : (timer_time[MINUTE] = 0);
+            break;
+
+        case UPPER:
+            (timer_time[HOUR] < 23) ? timer_time[HOUR]++ : (timer_time[HOUR] = 0);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    case STOPWATCH_S:
+        break;
+
+    case STOPWATCH_L:
+        break;
+
+    case MODE_NUM:
+        break;
+
     default:
         break;
     }
@@ -765,20 +1000,21 @@ void decr_selected_value(void)
         switch (selected_digit)
         {
         case LOWER:
-            (second > 0) ? second-- : (second = 59);
+            (clock_time[SECOND] > 0) ? clock_time[SECOND]-- : (clock_time[SECOND] = 59);
             break;
 
         case MIDDLE:
-            (minute > 0) ? minute-- : (minute = 59);
+            (clock_time[MINUTE] > 0) ? clock_time[MINUTE]-- : (clock_time[MINUTE] = 59);
             break;
 
         case UPPER:
-            (hour > 0) ? hour-- : (hour = 23);
+            (clock_time[HOUR] > 0) ? clock_time[HOUR]-- : (clock_time[HOUR] = 23);
             break;
 
         default:
             break;
         }
+        break;
 
     case CALENDAR:
         switch (selected_digit)
@@ -798,6 +1034,39 @@ void decr_selected_value(void)
         default:
             break;
         }
+        break;
+
+    case TIMER:
+        switch (selected_digit)
+        {
+        case LOWER:
+            (timer_time[SECOND] > 0) ? timer_time[SECOND]-- : (timer_time[SECOND] = 59);
+            break;
+
+        case MIDDLE:
+            (timer_time[MINUTE] > 0) ? timer_time[MINUTE]-- : (timer_time[MINUTE] = 59);
+            break;
+
+        case UPPER:
+            (timer_time[HOUR] > 0) ? timer_time[HOUR]-- : (timer_time[HOUR] = 23);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    case STOPWATCH_S:
+        break;
+
+    case STOPWATCH_L:
+        break;
+
+    case MODE_NUM:
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -812,28 +1081,29 @@ void MYTMR2_ISR(void)
 {
     is_tmr2_interrupt = 1;
 
-    if (is_active)
+    if (is_clock_active)
     {
         // 時間関係はずれると困るので割り込み内で処理
-        csec++; // 割り込みは1/100 s周期
-        if (csec > 99)
+        clock_time[CSEC]++; // 割り込みは1/100 s周期
+
+        if (clock_time[CSEC] > 99)
         {
-            csec = 0;
-            second++;
+            clock_time[CSEC] = 0;
+            clock_time[SECOND]++;
         }
-        if (second > 59)
+        if (clock_time[SECOND] > 59)
         {
-            second = 0;
-            minute++;
+            clock_time[SECOND] = 0;
+            clock_time[MINUTE]++;
         }
-        if (minute > 59)
+        if (clock_time[MINUTE] > 59)
         {
-            minute = 0;
-            hour++;
+            clock_time[MINUTE] = 0;
+            clock_time[HOUR]++;
         }
-        if (hour > 23)
+        if (clock_time[HOUR] > 23)
         {
-            hour = 0;
+            clock_time[HOUR] = 0;
             day++;
         }
         // 2月の処理(うるう年は考えない)
@@ -864,6 +1134,58 @@ void MYTMR2_ISR(void)
         if (year > 99)
         {
             year = 0;
+        }
+    }
+    if (is_timer_active)
+    {
+        if (!is_timer_end)
+        {
+            timer_time[CSEC]--;
+        }
+
+        if (timer_time[CSEC] > 99) // unsignedなので 1 -> 0 -> 255 -> 254となる
+        {
+            timer_time[CSEC] = 99;
+            timer_time[SECOND]--;
+        }
+        if (timer_time[SECOND] > 59)
+        {
+            timer_time[SECOND] = 59;
+            timer_time[MINUTE]--;
+        }
+        if (timer_time[MINUTE] > 59)
+        {
+            timer_time[MINUTE] = 59;
+            timer_time[HOUR]--;
+        }
+        if (timer_time[HOUR] > 23)
+        {
+            timer_time[HOUR] = 0;
+            is_timer_end = 1;
+        }
+    }
+    if (is_stopwatch_active)
+    {
+        stopwatch_time[CSEC]++;
+
+        if (stopwatch_time[CSEC] > 99)
+        {
+            stopwatch_time[CSEC] = 0;
+            stopwatch_time[SECOND]++;
+        }
+        if (stopwatch_time[SECOND] > 59)
+        {
+            stopwatch_time[SECOND] = 0;
+            stopwatch_time[MINUTE]++;
+        }
+        if (stopwatch_time[MINUTE] > 59)
+        {
+            stopwatch_time[MINUTE] = 0;
+            stopwatch_time[HOUR]++;
+        }
+        if (stopwatch_time[HOUR] > 23)
+        {
+            stopwatch_time[HOUR] = 0;
         }
     }
 }
