@@ -3,7 +3,7 @@
     <type>com.microchip.mplab.nbide.embedded.makeproject</type>
     <configuration>
         <data xmlns="http://www.netbeans.org/ns/make-project/1">
-            <name>NixieClock_re</name>
+            <name>NixieClock</name>
             <name>NixieClock</name>
             <creation-uuid>b2ad82f2-d790-4331-b114-26a20e53128d</creation-uuid>
             <make-project-type>0</make-project-type>

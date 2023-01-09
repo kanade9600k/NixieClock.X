@@ -24,7 +24,7 @@ CLEAN_SUBPROJECTS=${CLEAN_SUBPROJECTS_${SUBPROJECTS}}
 
 
 # Project Name
-PROJECTNAME=NixieClock_re.X
+PROJECTNAME=NixieClock.X
 
 # Active Configuration
 DEFAULTCONF=default
