@@ -1158,10 +1158,11 @@ void MYTMR2_ISR(void)
             timer_time[MINUTE] = 59;
             timer_time[HOUR]--;
         }
-        if (timer_time[HOUR] > 23)
+        if ((timer_time[CSEC] + timer_time[SECOND] + timer_time[MINUTE] + timer_time[HOUR]) == 0)
         {
-            timer_time[HOUR] = 0;
+            // ‘S•”0‚É‚È‚Á‚½‚ç’âŽ~
             is_timer_end = 1;
+            is_timer_active = 0;
         }
     }
     if (is_stopwatch_active)
